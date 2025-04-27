@@ -124,7 +124,7 @@ endef
 
 # docker parameters
 DOCKERCMD=$(shell which docker)
-DOCKERBUILD=$(DOCKERCMD) build
+DOCKERBUILD=$(DOCKERCMD) buildx build --platform linux/amd64,linux/arm64 --push
 DOCKERRMIMAGE=$(DOCKERCMD) rmi
 DOCKERPULL=$(DOCKERCMD) pull
 DOCKERIMAGES=$(DOCKERCMD) images
@@ -282,12 +282,13 @@ endef
 
 # lint swagger doc
 SPECTRAL_IMAGENAME=$(IMAGENAMESPACE)/spectral
-SPECTRAL_VERSION=v6.1.0
+SPECTRAL_VERSION=v6.15.0
 SPECTRAL_IMAGE_BUILD_CMD=${DOCKERBUILD} -f ${TOOLSPATH}/spectral/Dockerfile --build-arg GOLANG=${GOBUILDIMAGE} --build-arg SPECTRAL_VERSION=${SPECTRAL_VERSION} -t ${SPECTRAL_IMAGENAME}:$(SPECTRAL_VERSION) .
 SPECTRAL=$(RUNCONTAINER) $(SPECTRAL_IMAGENAME):$(SPECTRAL_VERSION)
 
 lint_apis:
 	$(call prepare_docker_image,${SPECTRAL_IMAGENAME},${SPECTRAL_VERSION},${SPECTRAL_IMAGE_BUILD_CMD})
+	docker pull $(SPECTRAL_IMAGENAME):$(SPECTRAL_VERSION)
 	$(SPECTRAL) lint ./api/v2.0/swagger.yaml
 
 SWAGGER_IMAGENAME=$(IMAGENAMESPACE)/swagger
@@ -373,7 +374,7 @@ prepare: update_prepare_version
 	fi
 	@$(MAKEPATH)/$(PREPARECMD) $(PREPARECMD_PARA)
 
-build:
+build: check_environment versions_prepare gen_apis
 # PUSHBASEIMAGE should not be true if BUILD_BASE is not true
 	@if [ "$(PULL_BASE_FROM_DOCKERHUB)" != "true" ] && [ "$(PULL_BASE_FROM_DOCKERHUB)" != "false" ] ; then \
 		echo set PULL_BASE_FROM_DOCKERHUB to true or false.; exit 1; \
@@ -410,7 +411,6 @@ build_base_docker:
 	fi
 	@for name in $(BUILDBASETARGET); do \
 		echo $$name ; \
-		sleep 30 ; \
 		$(DOCKERBUILD) --pull --no-cache -f $(MAKEFILEPATH_PHOTON)/$$name/Dockerfile.base -t $(BASEIMAGENAMESPACE)/harbor-$$name-base:$(BASEIMAGETAG) --label base-build-date=$(date +"%Y%m%d") . ; \
 		if [ "$(PUSHBASEIMAGE)" != "false" ] ; then \
 			$(PUSHSCRIPTPATH)/$(PUSHSCRIPTNAME) $(BASEIMAGENAMESPACE)/harbor-$$name-base:$(BASEIMAGETAG) $(REGISTRYUSER) $(REGISTRYPASSWORD) || exit 1; \
