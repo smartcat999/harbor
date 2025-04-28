@@ -124,11 +124,13 @@ VERSION_TAG: $(VERSIONTAG)
 REGISTRY_VERSION: $(REGISTRYVERSION)
 TRIVY_VERSION: $(TRIVYVERSION)
 TRIVY_ADAPTER_VERSION: $(TRIVYADAPTERVERSION)
+IMAGE_NAMESPACE: $(IMAGENAMESPACE)
 endef
 
 # docker parameters
+PLATFORM=linux/amd64,linux/arm64
 DOCKERCMD=$(shell which docker)
-DOCKERBUILD=$(DOCKERCMD) build
+DOCKERBUILD=$(DOCKERCMD) buildx build --platform $(PLATFORM) --push
 DOCKERRMIMAGE=$(DOCKERCMD) rmi
 DOCKERPULL=$(DOCKERCMD) pull
 DOCKERIMAGES=$(DOCKERCMD) images
@@ -226,7 +228,7 @@ ifeq ($(shell uname),Darwin)
 endif
 
 # package
-TARCMD=$(shell which tar)
+TARCMD=$(shell which tar) --no-mac-metadata --no-xattrs
 ZIPCMD=$(shell which gzip)
 DOCKERIMGFILE=harbor
 HARBORPKG=harbor
@@ -284,7 +286,7 @@ endef
 
 # lint swagger doc
 SPECTRAL_IMAGENAME=$(IMAGENAMESPACE)/spectral
-SPECTRAL_VERSION=v6.14.2
+SPECTRAL_VERSION=v6.15.0
 SPECTRAL_IMAGE_BUILD_CMD=${DOCKERBUILD} -f ${TOOLSPATH}/spectral/Dockerfile --build-arg NODE=${NODEBUILDIMAGE} --build-arg SPECTRAL_VERSION=${SPECTRAL_VERSION} -t ${SPECTRAL_IMAGENAME}:$(SPECTRAL_VERSION) .
 SPECTRAL=$(RUNCONTAINER) $(SPECTRAL_IMAGENAME):$(SPECTRAL_VERSION)
 
@@ -359,11 +361,11 @@ compile_standalone_db_migrator:
 	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_STANDALONE_DB_MIGRATOR) $(GOBUILDIMAGE) $(GOIMAGEBUILD_COMMON) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_STANDALONE_DB_MIGRATOR)/$(STANDALONE_DB_MIGRATOR_BINARYNAME)
 	@echo "Done."
 
-compile: check_environment versions_prepare compile_core compile_jobservice compile_registryctl
+compile: check_environment versions_prepare
 
 update_prepare_version:
 	@echo "substitute the prepare version tag in prepare file..."
-	@$(SEDCMDI) -e 's/goharbor\/prepare:.*[[:space:]]\+/goharbor\/prepare:$(VERSIONTAG) prepare /' $(MAKEPATH)/prepare ;
+	@$(SEDCMDI) -e 's/goharbor\/prepare:.*\s*prepare/$(IMAGENAMESPACE)\/prepare:$(VERSIONTAG) prepare/' $(MAKEPATH)/prepare ;
 
 gen_tls:
 	@$(DOCKERCMD) run --rm -v /:/hostfs:z $(IMAGENAMESPACE)/prepare:$(VERSIONTAG) gencert -p /etc/harbor/tls/internal
@@ -375,7 +377,7 @@ prepare: update_prepare_version
 	fi
 	@$(MAKEPATH)/$(PREPARECMD) $(PREPARECMD_PARA)
 
-build:
+build: check_environment versions_prepare gen_apis
 # PUSHBASEIMAGE should not be true if BUILD_BASE is not true
 	@if [ "$(PULL_BASE_FROM_DOCKERHUB)" != "true" ] && [ "$(PULL_BASE_FROM_DOCKERHUB)" != "false" ] ; then \
 		echo set PULL_BASE_FROM_DOCKERHUB to true or false.; exit 1; \
@@ -399,6 +401,7 @@ build:
 	 -e TRIVY_DOWNLOAD_URL=$(TRIVY_DOWNLOAD_URL) -e TRIVY_ADAPTER_DOWNLOAD_URL=$(TRIVY_ADAPTER_DOWNLOAD_URL) \
 	 -e PULL_BASE_FROM_DOCKERHUB=$(PULL_BASE_FROM_DOCKERHUB) -e BUILD_BASE=$(BUILD_BASE) \
 	 -e REGISTRYUSER=$(REGISTRYUSER) -e REGISTRYPASSWORD=$(REGISTRYPASSWORD) \
+	 -e PLATFORM=$(PLATFORM) \
 	 -e PUSHBASEIMAGE=$(PUSHBASEIMAGE)
 
 build_standalone_db_migrator: compile_standalone_db_migrator
@@ -412,7 +415,6 @@ build_base_docker:
 	fi
 	@for name in $(BUILDBASETARGET); do \
 		echo $$name ; \
-		sleep 30 ; \
 		$(DOCKERBUILD) --pull --no-cache -f $(MAKEFILEPATH_PHOTON)/$$name/Dockerfile.base -t $(BASEIMAGENAMESPACE)/harbor-$$name-base:$(BASEIMAGETAG) --label base-build-date=$(date +"%Y%m%d") . ; \
 		if [ "$(PUSHBASEIMAGE)" != "false" ] ; then \
 			$(PUSHSCRIPTPATH)/$(PUSHSCRIPTNAME) $(BASEIMAGENAMESPACE)/harbor-$$name-base:$(BASEIMAGETAG) $(REGISTRYUSER) $(REGISTRYPASSWORD) || exit 1; \
@@ -427,7 +429,7 @@ pull_base_docker:
 
 install: compile build prepare start
 
-package_online: update_prepare_version
+package_online: versions_prepare update_prepare_version
 	@echo "packing online package ..."
 	@cp -r make $(HARBORPKG)
 	@if [ -n "$(REGISTRYSERVER)" ] ; then \
@@ -447,6 +449,10 @@ package_offline: update_prepare_version compile build
 	@cp LICENSE $(HARBORPKG)/LICENSE
 
 	@echo "saving harbor docker image"
+	@for name in $(DOCKERSAVE_PARA); do \
+		echo $$name ; \
+		$(DOCKERPULL) $$name ; \
+	done
 	@$(DOCKERSAVE) $(DOCKERSAVE_PARA) > $(HARBORPKG)/$(DOCKERIMGFILE).$(VERSIONTAG).tar
 	@gzip $(HARBORPKG)/$(DOCKERIMGFILE).$(VERSIONTAG).tar
 

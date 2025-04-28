@@ -1,7 +1,14 @@
 FROM golang:1.23.8
 
-ADD .   /go/src/github.com/goharbor/harbor-scanner-trivy/
-WORKDIR /go/src/github.com/goharbor/harbor-scanner-trivy/
+ENV TRIVY_ADAPTER_VERSION=${trivy_adapter_version}
+
+RUN mkdir -p /go/src/github.com/aquasecurity && \
+    cd /go/src/github.com/aquasecurity && \
+    git clone https://github.com/aquasecurity/harbor-scanner-trivy.git && \
+    cd /go/src/github.com/aquasecurity/harbor-scanner-trivy && \
+    git checkout $TRIVY_ADAPTER_VERSION
+
+WORKDIR /go/src/github.com/aquasecurity/harbor-scanner-trivy/
 
 RUN export GOOS=linux GO111MODULE=on CGO_ENABLED=0 && \
 	go build -o scanner-trivy cmd/scanner-trivy/main.go

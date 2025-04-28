@@ -11,9 +11,11 @@ docker_compose_yml_path = '/compose_location/docker-compose.yml'
 def prepare_docker_compose(configs, with_trivy):
     versions = parse_versions()
     VERSION_TAG = versions.get('VERSION_TAG') or 'dev'
+    IMAGE_NAMESPACE = versions.get('IMAGE_NAMESPACE')
 
     rendering_variables = {
         'version': VERSION_TAG,
+        'image_namespace': IMAGE_NAMESPACE,
         'reg_version': VERSION_TAG,
         'redis_version': VERSION_TAG,
         'trivy_adapter_version': VERSION_TAG,

@@ -1,6 +1,6 @@
 src/portal/node_modules/
 doc/
 docs/
-.git
+#.git
 make/common/config/
 harbor-offline-installer-*.tgz

@@ -1,10 +1,20 @@
 ARG harbor_base_image_version
 ARG harbor_base_namespace
+ARG go_build_image
+
+FROM ${go_build_image} AS builder
+
+COPY . /harbor
+
+WORKDIR /harbor
+RUN /harbor/make/photon/common/env.sh /harbor/src/jobservice /harbor/make/photon/jobservice/harbor_jobservice
+
 FROM ${harbor_base_namespace}/harbor-jobservice-base:${harbor_base_image_version}
 
 COPY ./make/photon/common/install_cert.sh /harbor/
 COPY ./make/photon/jobservice/entrypoint.sh /harbor/
-COPY ./make/photon/jobservice/harbor_jobservice /harbor/
+#COPY ./make/photon/jobservice/harbor_jobservice /harbor/
+COPY --from=builder /harbor/make/photon/jobservice/harbor_jobservice /harbor/
 
 
 RUN chown -R harbor:harbor /etc/pki/tls/certs \
